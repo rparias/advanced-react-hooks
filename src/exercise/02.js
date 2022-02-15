@@ -11,7 +11,7 @@ import {
 } from '../pokemon'
 
 // 🐨 this is going to be our generic asyncReducer
-function pokemonInfoReducer(state, action) {
+function asyncReducer(state, action) {
   switch (action.type) {
     case 'pending': {
       return {status: 'pending', data: null, error: null}
@@ -28,20 +28,17 @@ function pokemonInfoReducer(state, action) {
   }
 }
 
-function useAsync(asyncCallback, initialState) {
-  const [state, dispatch] = React.useReducer(pokemonInfoReducer, {
+function useAsync(initialState) {
+  const [state, dispatch] = React.useReducer(asyncReducer, {
     status: 'idle',
     data: null,
     error: null,
     ...initialState
   })
 
-  React.useEffect(() => {
-    const promise = asyncCallback()
-    if(!promise) {
-      return
-    }
+  const {data, error, status} = state
 
+  const run = React.useCallback((promise) => {
     dispatch({type: 'pending'})
     promise.then(
       data => {
@@ -51,24 +48,29 @@ function useAsync(asyncCallback, initialState) {
         dispatch({type: 'rejected', error})
       },
     )
-  }, [asyncCallback])
+  }, [])
 
-  return state;
+  return {
+    data,
+    error,
+    status,
+    run
+  }
 }
 
 function PokemonInfo({pokemonName}) {
-  const asyncCallback = React.useCallback(() => {
+  const initialState = {
+    status: pokemonName ? 'pending' : 'idle',
+  }
+  const {data: pokemon, status, error, run} = useAsync(initialState)
+
+  React.useEffect(() => {
     if (!pokemonName) {
       return
     }
-    return fetchPokemon(pokemonName)
-  }, [pokemonName])
-
-  const state = useAsync(
-    asyncCallback,
-    {status: pokemonName ? 'pending' : 'idle'}
-  )
-  const {data, status, error} = state
+    const pokemonPromise = fetchPokemon(pokemonName) // this returns a promise
+    run(pokemonPromise) // here the promise is passed
+  }, [pokemonName, run])
 
   switch (status) {
     case 'idle':
@@ -78,7 +80,7 @@ function PokemonInfo({pokemonName}) {
     case 'rejected':
       throw error
     case 'resolved':
-      return <PokemonDataView pokemon={data} />
+      return <PokemonDataView pokemon={pokemon} />
     default:
       throw new Error('This should be impossible')
   }
